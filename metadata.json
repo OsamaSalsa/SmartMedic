@@ -1,0 +1,6 @@
+{
+  "name": "طبيبي الذكي",
+  "description": "تطبيق طبي متكامل مدعوم بالذكاء الاصطناعي لتحليل الفحوصات المخبرية، متابعة السكر وضغط الدم والوزن، ومستشار صحي ذكي للغذاء وأسلوب الحياة مع رسوم بيانية وتخزين سحابي.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

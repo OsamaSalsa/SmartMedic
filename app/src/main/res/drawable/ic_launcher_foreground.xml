@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Medical Heart Shield Background Shape in Center -->
+    <path
+        android:fillColor="#E3F2FD"
+        android:pathData="M54,26 C64,26 73,32 75,41 C77,53 66,66 54,78 C42,66 31,53 33,41 C35,32 44,26 54,26 Z" />
+    <!-- Medical Cross in Center -->
+    <path
+        android:fillColor="#E53935"
+        android:pathData="M51,33 H57 V44 H68 V50 H57 V61 H51 V50 H40 V44 H51 Z" />
+    <!-- Dynamic ECG Pulse Wave overlay across bottom -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M32,54 L44,54 L48,46 L52,60 L57,38 L62,56 L66,54 L76,54" />
+</vector>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<resources>
+    <string name="firestore_database_id" translatable="false">ai-studio-android-healthpu-975e0739-1a04-4d9c-af48-b2d951888b83</string>
+    <string name="recaptcha_site_key" translatable="false">6Ld-XyMuAAAAAHxtkh6tlCCzLJFHMxhmyZdBJDol</string>
+</resources>
