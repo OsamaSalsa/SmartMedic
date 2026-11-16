@@ -118,4 +118,65 @@ class ExampleRobolectricTest {
     assertTrue(fbs.matches("FBS"))
     assertTrue(fbs.matches("glucose"))
   }
+
+  @Test
+  fun `rule based medical consultation and chat generate accurate patient report`() {
+    val service = com.example.data.remote.GeminiService()
+    val consultation = service.generateRuleBasedMedicalConsultation(
+      labTests = DefaultData.shifaLabTestsExample,
+      bpRecords = listOf(
+        com.example.data.model.BloodPressureEntity(
+          date = "2026-11-16",
+          time = "08:00",
+          period = "صباحاً",
+          systolic = 128,
+          diastolic = 82,
+          pulse = 74,
+          category = "طبيعي"
+        )
+      ),
+      sugarRecords = listOf(
+        com.example.data.model.BloodSugarEntity(
+          date = "2026-11-16",
+          time = "08:00",
+          type = "صائم",
+          value = 105f,
+          status = "طبيعي"
+        )
+      ),
+      latestWeight = com.example.data.model.WeightRecordEntity(
+        date = "2026-11-16",
+        weightKg = 78.0f,
+        bmi = 25.4f,
+        bmiCategory = "طبيعي"
+      ),
+      profile = DefaultData.defaultUserProfile.copy(name = "أسامة", age = 38),
+      medications = listOf(
+        com.example.data.model.MedicationEntity(
+          name = "Metformin",
+          dosage = "500mg",
+          time = "08:00",
+          instructions = "بعد الفطور",
+          frequency = "يومياً",
+          isActive = true
+        )
+      ),
+      language = com.example.ui.locale.AppLanguage.AR,
+      currentDate = "2026-11-16"
+    )
+    assertTrue(consultation.title.isNotBlank())
+    assertTrue(consultation.summary.contains("33"))
+    assertTrue(consultation.dietAdvice.isNotBlank())
+    assertTrue(consultation.foodsToEat.isNotBlank())
+    assertTrue(consultation.foodsToAvoid.isNotBlank())
+    assertTrue(consultation.medicationAdvice.contains("Metformin"))
+
+    val chatReply = service.generateRuleBasedChatResponse(
+      userMessage = "ما هو أفضل نظام غذائي لضبط السكر؟",
+      medicalContext = consultation.summary,
+      language = com.example.ui.locale.AppLanguage.AR
+    )
+    assertTrue(chatReply.contains("سكر"))
+  }
 }
+

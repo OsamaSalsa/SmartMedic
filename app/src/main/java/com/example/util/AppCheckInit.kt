@@ -61,14 +61,31 @@ fun configureAppCheck(context: Context, intent: Intent?) {
                     .putString(DEBUG_SECRET_KEY, debugToken)
                     .commit()
                 Log.d(TAG, "App Check debug secret configured successfully.")
+                FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
+                    DebugAppCheckProviderFactory.getInstance()
+                )
+                Log.d(TAG, "DebugAppCheckProviderFactory installed.")
             } else {
-                Log.w(TAG, "No debug token found in Intent extra.")
+                // On physical devices (e.g., APK installed from GitHub), no debug token is passed in the launch intent.
+                // Prefer RecaptchaAppCheckProviderFactory if recaptcha_site_key is configured so requests do not stall.
+                val resId = context.resources.getIdentifier(
+                    RECAPTCHA_SITE_KEY_RES,
+                    "string",
+                    context.packageName
+                )
+                val siteKey = if (resId != 0) context.getString(resId) else ""
+                if (siteKey.isNotBlank()) {
+                    FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
+                        RecaptchaAppCheckProviderFactory.getInstance(siteKey)
+                    )
+                    Log.d(TAG, "No debug token in Intent; RecaptchaAppCheckProviderFactory installed for physical device.")
+                } else {
+                    FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
+                        DebugAppCheckProviderFactory.getInstance()
+                    )
+                    Log.w(TAG, "No debug token or recaptcha key found; DebugAppCheckProviderFactory installed.")
+                }
             }
-
-            FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
-                DebugAppCheckProviderFactory.getInstance()
-            )
-            Log.d(TAG, "DebugAppCheckProviderFactory installed.")
         } else {
             val resId = context.resources.getIdentifier(
                 RECAPTCHA_SITE_KEY_RES,

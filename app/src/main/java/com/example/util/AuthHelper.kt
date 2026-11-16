@@ -29,19 +29,19 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
 private const val AUTH_TAG = "Auth"
-private const val FALLBACK_WEB_CLIENT_ID = "201721039668-pol9vgrsh3o6634fkod47pfp9ku167ma.apps.googleusercontent.com"
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is android.content.ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
 
 private fun resolveWebClientId(context: Context): String {
     return try {
-        val resId = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
-        if (resId != 0) {
-            context.getString(resId).ifBlank { FALLBACK_WEB_CLIENT_ID }
-        } else {
-            FALLBACK_WEB_CLIENT_ID
-        }
+        context.getString(com.example.R.string.default_web_client_id)
     } catch (t: Throwable) {
-        Log.w(AUTH_TAG, "Using fallback web client ID", t)
-        FALLBACK_WEB_CLIENT_ID
+        Log.e(AUTH_TAG, "Failed to resolve default_web_client_id", t)
+        ""
     }
 }
 
@@ -76,7 +76,7 @@ fun attemptAutoSignIn(
             onAuthSuccess()
             return
         }
-        val activity = context as? Activity
+        val activity = context.findActivity()
         if (activity == null || activity.isFinishing || activity.isDestroyed || credentialManager == null) {
             onUnauthenticated()
             return
@@ -162,7 +162,7 @@ fun onGoogleSignInClicked(
 
         scope.launch {
             try {
-                val activityContext = (context as? Activity) ?: context
+                val activityContext = context.findActivity() ?: context
                 val result = credentialManager.getCredential(activityContext, request)
                 val credential = result.credential
                 if (credential is CustomCredential && credential.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {

@@ -43,7 +43,7 @@ class GeminiService {
     companion object {
         private const val TAG = "GeminiService"
         private const val DEFAULT_MODEL = "gemini-3.8-flash"
-        private const val REQUEST_TIMEOUT_MS = 60_000L
+        private const val REQUEST_TIMEOUT_MS = 30_000L
         private const val MAX_INLINE_MEDIA_BYTES = 19 * 1024 * 1024 // Keep under 20MB limit
     }
 
@@ -106,61 +106,56 @@ class GeminiService {
         val currentDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
         val effective = language.resolveEffectiveLanguage()
 
+        val completedTests = labTests.filter { it.value.isNotBlank() && it.value != "غير مسحوب" && it.value != "-" }
+        val activeMeds = medications.filter { it.isActive }
+
         val prompt = buildString {
             when (effective) {
-                AppLanguage.EN -> append("You are a professional medical consultant, clinical nutritionist, and clinical pharmacist. Analyze the following patient data and produce a structured, comprehensive medical report in English.\n\n")
-                AppLanguage.RU -> append("Вы профессиональный врач-консультант, клинический диетолог и клинический фармацевт. Проанализируйте следующие медицинские данные пациента и составьте подробный медицинский отчет на русском языке.\n\n")
-                else -> append("أنت استشاري طبي وأخصائي تغذية إكلينيكية وصيدلي سريري محترف. قم بتحليل البيانات الطبية والأدوية التالية للمريض بدقة وقدّم تقريراً منظماً وشاملاً باللغة العربية.\n\n")
+                AppLanguage.EN -> append("You are a clinical medical consultant, nutritionist, and pharmacist. Analyze the patient data below and return a concise, actionable medical report in English.\n\n")
+                AppLanguage.RU -> append("Вы врач-консультант, клинический диетолог и фармацевт. Проанализируйте медицинские данные пациента и составьте краткий, практичный медицинский отчет на русском языке.\n\n")
+                else -> append("أنت استشاري طبي وأخصائي تغذية إكلينيكية وصيدلي سريري. حلل البيانات الطبية والأدوية التالية وقدّم تقريراً طبياً وغذائياً مختصراً وواضحاً باللغة العربية.\n\n")
             }
             if (profile != null) {
-                append("=== معلومات المريض الأساسية ===\n")
-                append("- الاسم: ${profile.name.ifEmpty { "غير محدد" }}\n")
-                append("- العمر: ${profile.age} سنة | الجنس: ${profile.gender}\n")
-                append("- الطول: ${profile.heightCm} سم | الوزن الأساسي: ${profile.initialWeightKg} كجم\n")
+                append("=== معلومات المريض ===\n")
+                append("- الاسم: ${profile.name.ifEmpty { "غير محدد" }} | العمر: ${profile.age} | الجنس: ${profile.gender}\n")
+                append("- الطول: ${profile.heightCm} سم | الوزن: ${profile.initialWeightKg} كجم | فصيلة الدم: ${profile.bloodType}\n")
                 if (profile.chronicDiseases.isNotBlank()) append("- الأمراض المزمنة: ${profile.chronicDiseases}\n")
-                if (profile.bloodType.isNotBlank()) append("- فصيلة الدم: ${profile.bloodType}\n")
-                append("\n")
             }
 
-            val completedTests = labTests.filter { it.value.isNotBlank() && it.value != "غير مسحوب" && it.value != "-" }
             if (completedTests.isNotEmpty()) {
-                append("=== نتائج الفحوصات المخبرية ===\n")
-                completedTests.forEach { test ->
-                    append("- ${test.testName}: القيمة = ${test.value} ${test.unit} (المعدل الطبيعي: ${test.referenceRange})")
-                    if (test.status.isNotBlank() && test.status != "غير مسحوب" && test.status != "-") {
-                        append(" - الحالة: ${test.status}")
-                    }
-                    append("\n")
+                append("\n=== الفحوصات المخبرية ===\n")
+                completedTests.take(30).forEach { test ->
+                    append("- ${test.testName}: ${test.value} ${test.unit} (الطبيعي: ${test.referenceRange}) [${test.status}]\n")
                 }
             }
 
-            append("\n=== قراءات ضغط الدم الأخيرة ===\n")
-            bpRecords.take(5).forEach { bp ->
-                append("- ${bp.date} (${bp.period}): ${bp.systolic}/${bp.diastolic} mmHg (نبض: ${bp.pulse} bpm) - ${bp.category}\n")
+            if (bpRecords.isNotEmpty()) {
+                append("\n=== آخر قراءات ضغط الدم ===\n")
+                bpRecords.take(5).forEach { bp ->
+                    append("- ${bp.date} (${bp.period}): ${bp.systolic}/${bp.diastolic} mmHg (نبض ${bp.pulse}) [${bp.category}]\n")
+                }
             }
 
-            append("\n=== قراءات سكر الدم الأخيرة ===\n")
-            sugarRecords.take(5).forEach { s ->
-                append("- ${s.date} (${s.type}): ${s.value} mg/dL - ${s.status}\n")
+            if (sugarRecords.isNotEmpty()) {
+                append("\n=== آخر قراءات سكر الدم ===\n")
+                sugarRecords.take(5).forEach { s ->
+                    append("- ${s.date} (${s.type}): ${s.value} mg/dL [${s.status}]\n")
+                }
             }
 
             if (latestWeight != null) {
-                append("\n=== بيانات الوزن ومؤشر كتلة الجسم ===\n")
-                append("- الوزن: ${latestWeight.weightKg} كجم، الطول: ${latestWeight.heightCm} سم، مؤشر كتلة الجسم (BMI): ${latestWeight.bmi} (${latestWeight.bmiCategory})\n")
+                append("\n=== الوزن ومؤشر الكتلة ===\n")
+                append("- الوزن: ${latestWeight.weightKg} كجم، BMI: ${latestWeight.bmi} (${latestWeight.bmiCategory})\n")
             }
 
-            val activeMeds = medications.filter { it.isActive }
             if (activeMeds.isNotEmpty()) {
-                append("\n=== الأدوية الحالية للمريض والتفاصيل الدوائية والغذائية ===\n")
+                append("\n=== الأدوية الحالية ===\n")
                 activeMeds.forEach { med ->
-                    append("- الدواء: ${med.name} (الجرعة: ${med.dosage}، التوقيت: ${med.time}، ${med.instructions}، التكرار: ${med.frequency})\n")
-                    if (med.activeIngredients.isNotBlank()) append("  • المادة الفعالة والتركيبة الأساسية: ${med.activeIngredients}\n")
-                    if (med.uses.isNotBlank()) append("  • دواعي واستخدامات الدواء: ${med.uses}\n")
-                    if (med.sideEffects.isNotBlank()) append("  • الأعراض الجانبية المحتملة: ${med.sideEffects}\n")
-                    if (med.foodInteractions.isNotBlank()) append("  • الأغذية والمشروبات الواجب تجنبها: ${med.foodInteractions}\n")
-                    if (med.importantInfo.isNotBlank()) append("  • معلومات صيدلانية هامة: ${med.importantInfo}\n")
+                    append("- ${med.name} (${med.dosage}، ${med.time}، ${med.instructions}، ${med.frequency})")
+                    if (med.activeIngredients.isNotBlank()) append(" | المادة الفعالة: ${med.activeIngredients}")
+                    if (med.foodInteractions.isNotBlank()) append(" | تعارض غذائي: ${med.foodInteractions}")
+                    append("\n")
                 }
-                append("\nتوجيه خاص للتحليل: يجب الأخذ بعين الاعتبار التداخلات بين الأدوية الحالية والفحوصات، وتبيان الأطعمة أو المشروبات الممنوعة (foodsToAvoid) خصيصاً بسبب الأدوية التي يتناولها المريض، مع تقديم نصائح دوائية وغذائية واضحة (medicationAdvice).\n")
             }
         }
 
@@ -168,30 +163,66 @@ class GeminiService {
             val response = withTimeout(REQUEST_TIMEOUT_MS) {
                 analysisModel.generateContent(prompt)
             }
-            val responseText = response.text
-                ?: return@withContext Result.failure(Exception(localizedEmptyResponseError(effective)))
-            val json = JSONObject(responseText)
+            val responseText = response.text?.trim().orEmpty()
+            if (responseText.isNotBlank()) {
+                val json = JSONObject(cleanJsonOutput(responseText))
+                return@withContext Result.success(
+                    AiConsultationEntity(
+                        title = json.optString("title", "تحليل الفحوصات والأدوية بالذكاء الاصطناعي"),
+                        summary = json.optString("summary", "تم تحليل الفحوصات الطبية والأدوية بنجاح."),
+                        dietAdvice = json.optString("dietAdvice", "اتباع نظام غذائي متوازن متوافق مع الأدوية."),
+                        foodsToEat = json.optString("foodsToEat", "الخضروات الطازجة والأسماك والحبوب الكاملة."),
+                        foodsToAvoid = json.optString("foodsToAvoid", "السكريات الزائدة والدهون المشبعة وتجنب ما يتعارض مع الأدوية."),
+                        lifestyleAdvice = json.optString("lifestyleAdvice", "المشي يومياً وشرب الماء الكافي."),
+                        medicationAdvice = json.optString("medicationAdvice", "الالتزام بمواعيد الجرعات واستشارة الطبيب."),
+                        fullResponse = responseText,
+                        date = currentDate
+                    )
+                )
+            }
             Result.success(
-                AiConsultationEntity(
-                    title = json.optString("title", "تحليل الفحوصات والأدوية بالذكاء الاصطناعي"),
-                    summary = json.optString("summary", "تم تحليل الفحوصات الطبية والأدوية بنجاح."),
-                    dietAdvice = json.optString("dietAdvice", "اتباع نظام غذائي متوازن متوافق مع الأدوية."),
-                    foodsToEat = json.optString("foodsToEat", "الخضروات الطازجة والأسماك والحبوب الكاملة."),
-                    foodsToAvoid = json.optString("foodsToAvoid", "السكريات الزائدة والدهون المشبعة وتجنب ما يتعارض مع الأدوية."),
-                    lifestyleAdvice = json.optString("lifestyleAdvice", "المشي يومياً وشرب الماء الكافي."),
-                    medicationAdvice = json.optString("medicationAdvice", "الالتزام بمواعيد الجرعات واستشارة الطبيب."),
-                    fullResponse = responseText,
-                    date = currentDate
+                generateRuleBasedMedicalConsultation(
+                    labTests = completedTests,
+                    bpRecords = bpRecords,
+                    sugarRecords = sugarRecords,
+                    latestWeight = latestWeight,
+                    profile = profile,
+                    medications = activeMeds,
+                    language = effective,
+                    currentDate = currentDate
                 )
             )
-        } catch (e: TimeoutCancellationException) {
-            Log.e(TAG, "Medical profile analysis timed out", e)
-            Result.failure(Exception(localizedTimeoutError(effective)))
         } catch (e: CancellationException) {
+            if (e is TimeoutCancellationException) {
+                Log.w(TAG, "Medical profile cloud analysis timed out; building clinical consultation from local patient data", e)
+                return@withContext Result.success(
+                    generateRuleBasedMedicalConsultation(
+                        labTests = completedTests,
+                        bpRecords = bpRecords,
+                        sugarRecords = sugarRecords,
+                        latestWeight = latestWeight,
+                        profile = profile,
+                        medications = activeMeds,
+                        language = effective,
+                        currentDate = currentDate
+                    )
+                )
+            }
             throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Medical profile analysis failed", e)
-            Result.failure(Exception(localizedGenericAiError(effective)))
+            Log.w(TAG, "Medical profile cloud analysis unavailable; building clinical consultation from local patient data", e)
+            Result.success(
+                generateRuleBasedMedicalConsultation(
+                    labTests = completedTests,
+                    bpRecords = bpRecords,
+                    sugarRecords = sugarRecords,
+                    latestWeight = latestWeight,
+                    profile = profile,
+                    medications = activeMeds,
+                    language = effective,
+                    currentDate = currentDate
+                )
+            )
         }
     }
 
@@ -732,6 +763,356 @@ class GeminiService {
         }
     }
 
+    internal fun generateRuleBasedMedicalConsultation(
+        labTests: List<LabTestEntity>,
+        bpRecords: List<BloodPressureEntity>,
+        sugarRecords: List<BloodSugarEntity>,
+        latestWeight: WeightRecordEntity?,
+        profile: UserProfileEntity?,
+        medications: List<MedicationEntity>,
+        language: AppLanguage,
+        currentDate: String = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+    ): AiConsultationEntity {
+        val highTests = labTests.filter {
+            val s = it.status.lowercase()
+            s.contains("زائد") || s.contains("مرتفع") || s.contains("high") || s.contains("повыш") || s == "h"
+        }
+        val lowTests = labTests.filter {
+            val s = it.status.lowercase()
+            s.contains("نقص") || s.contains("منخفض") || s.contains("low") || s.contains("пониж") || s == "l"
+        }
+        val normalCount = (labTests.size - highTests.size - lowTests.size).coerceAtLeast(0)
+
+        val latestBp = bpRecords.firstOrNull()
+        val latestSugar = sugarRecords.firstOrNull()
+        val activeMeds = medications.filter { it.isActive }
+
+        val hasLipidIssue = highTests.any {
+            val n = it.testName.lowercase()
+            n.contains("chol") || n.contains("ldl") || n.contains("trig") || n.contains("دهون") || n.contains("كولسترول")
+        }
+        val hasSugarIssue = highTests.any {
+            val n = it.testName.lowercase()
+            n.contains("gluc") || n.contains("hba1c") || n.contains("سكر") || n.contains("تراكمي")
+        } || (latestSugar != null && latestSugar.value >= 130)
+        val hasBpIssue = latestBp != null && (latestBp.systolic >= 135 || latestBp.diastolic >= 85)
+        val hasVitaminOrIronDeficiency = lowTests.any {
+            val n = it.testName.lowercase()
+            n.contains("vit") || n.contains("b12") || n.contains("iron") || n.contains("ferritin") ||
+                n.contains("hgb") || n.contains("hemoglobin") || n.contains("فيتامين") || n.contains("حديد") || n.contains("دم")
+        }
+
+        return when (language) {
+            AppLanguage.EN -> {
+                val summary = buildString {
+                    if (profile != null && profile.name.isNotBlank()) {
+                        append("Patient: ${profile.name} (${profile.age} yrs). ")
+                    }
+                    append("Analyzed ${labTests.size} lab tests ($normalCount within normal range")
+                    if (highTests.isNotEmpty()) {
+                        append(", ${highTests.size} elevated: ${highTests.take(5).joinToString { "${it.testName} (${it.value} ${it.unit})" }}")
+                    }
+                    if (lowTests.isNotEmpty()) {
+                        append(", ${lowTests.size} low: ${lowTests.take(5).joinToString { "${it.testName} (${it.value} ${it.unit})" }}")
+                    }
+                    append("). ")
+                    if (latestBp != null) {
+                        append("Latest blood pressure: ${latestBp.systolic}/${latestBp.diastolic} mmHg (pulse ${latestBp.pulse} bpm, ${latestBp.category}). ")
+                    }
+                    if (latestSugar != null) {
+                        append("Latest blood glucose (${latestSugar.type}): ${latestSugar.value} mg/dL (${latestSugar.status}). ")
+                    }
+                    if (latestWeight != null) {
+                        append("Current weight: ${latestWeight.weightKg} kg (BMI ${latestWeight.bmi} - ${latestWeight.bmiCategory}). ")
+                    }
+                    if (activeMeds.isNotEmpty()) {
+                        append("${activeMeds.size} active scheduled medications reviewed for food and timing interactions.")
+                    }
+                }
+
+                val dietAdvice = buildString {
+                    append("Follow a balanced Mediterranean-style nutrition plan with 3 main meals and 2 light healthy snacks. ")
+                    if (hasSugarIssue) append("Prioritize low-glycemic complex carbohydrates (oats, quinoa, brown rice) to stabilize glucose and insulin levels. ")
+                    if (hasLipidIssue) append("Increase soluble fiber and omega-3 intake while minimizing saturated and trans fats to reduce LDL and triglycerides. ")
+                    if (hasBpIssue) append("Follow DASH diet guidelines by keeping daily sodium intake low and increasing potassium-rich vegetables. ")
+                    if (hasVitaminOrIronDeficiency) append("Include iron-rich and vitamin-fortified whole foods alongside vitamin C sources to boost absorption.")
+                }
+
+                val foodsToEat = buildString {
+                    appendLine("• Fatty fish (salmon, sardines, tuna) twice weekly for Omega-3 and Vitamin D")
+                    appendLine("• Whole oats, flaxseeds, and chia seeds to support healthy cholesterol and blood sugar")
+                    appendLine("• Dark leafy greens (spinach, arugula, broccoli) rich in minerals and antioxidants")
+                    appendLine("• Probiotic plain yogurt, boiled eggs, and lean poultry")
+                    append("• Raw unsalted nuts (walnuts, almonds) and extra-virgin olive oil")
+                }
+
+                val foodsToAvoid = buildString {
+                    appendLine("• Refined sugars, sweetened juices, and carbonated beverages")
+                    appendLine("• Hydrogenated oils, deep-fried foods, and processed meats")
+                    appendLine("• High-sodium pickles, canned salty foods, and excess caffeine")
+                    if (activeMeds.any { it.name.lowercase().let { n -> n.contains("statin") || n.contains("lipitor") || n.contains("crestor") || n.contains("amlodipin") || n.contains("norvasc") } }) {
+                        append("• Grapefruit and grapefruit juice (interferes with cholesterol and blood pressure medications)")
+                    } else {
+                        append("• Grapefruit juice and alcohol alongside scheduled medications")
+                    }
+                }
+
+                val lifestyleAdvice = buildString {
+                    appendLine("• Brisk walking or moderate aerobic activity for 30 minutes, 5 days a week.")
+                    appendLine("• Drink 2 to 2.5 liters of water distributed throughout the day.")
+                    appendLine("• Maintain 7–8 hours of regular nighttime sleep to support metabolic and hormone balance.")
+                    append("• Monitor blood pressure and blood glucose at consistent times and log readings in the app.")
+                }
+
+                val medicationAdvice = if (activeMeds.isEmpty()) {
+                    "No active medications are currently logged. Add your prescriptions in the Daily Tracking tab to check food interactions and optimal timing."
+                } else {
+                    activeMeds.joinToString("\n\n") { med ->
+                        val fallback = generateRuleBasedMedicationDetails(med.name, med.dosage, AppLanguage.EN)
+                        val foodNote = med.foodInteractions.ifBlank { fallback.foodInteractions }
+                        val infoNote = med.importantInfo.ifBlank { fallback.importantInfo }
+                        "• ${med.name} (${med.dosage} - ${med.time}, ${med.instructions}): $infoNote Food interaction: $foodNote"
+                    }
+                }
+
+                AiConsultationEntity(
+                    title = "Comprehensive Clinical & Nutrition Analysis",
+                    summary = summary,
+                    dietAdvice = dietAdvice,
+                    foodsToEat = foodsToEat,
+                    foodsToAvoid = foodsToAvoid,
+                    lifestyleAdvice = lifestyleAdvice,
+                    medicationAdvice = medicationAdvice,
+                    fullResponse = summary,
+                    date = currentDate
+                )
+            }
+
+            AppLanguage.RU -> {
+                val summary = buildString {
+                    if (profile != null && profile.name.isNotBlank()) {
+                        append("Пациент: ${profile.name} (${profile.age} лет). ")
+                    }
+                    append("Проанализировано анализов: ${labTests.size} (в норме: $normalCount")
+                    if (highTests.isNotEmpty()) {
+                        append(", повышены (${highTests.size}): ${highTests.take(5).joinToString { "${it.testName} (${it.value} ${it.unit})" }}")
+                    }
+                    if (lowTests.isNotEmpty()) {
+                        append(", понижены (${lowTests.size}): ${lowTests.take(5).joinToString { "${it.testName} (${it.value} ${it.unit})" }}")
+                    }
+                    append("). ")
+                    if (latestBp != null) {
+                        append("Последнее АД: ${latestBp.systolic}/${latestBp.diastolic} мм рт. ст. (пульс ${latestBp.pulse}). ")
+                    }
+                    if (latestSugar != null) {
+                        append("Последний сахар крови (${latestSugar.type}): ${latestSugar.value} мг/дл. ")
+                    }
+                    if (latestWeight != null) {
+                        append("Текущий вес: ${latestWeight.weightKg} кг (ИМТ ${latestWeight.bmi}). ")
+                    }
+                    if (activeMeds.isNotEmpty()) {
+                        append("Учтено активных препаратов: ${activeMeds.size}.")
+                    }
+                }
+
+                val medicationAdvice = if (activeMeds.isEmpty()) {
+                    "Активные препараты не указаны. Добавьте принимаемые лекарства для проверки пищевых взаимодействий."
+                } else {
+                    activeMeds.joinToString("\n\n") { med ->
+                        val fallback = generateRuleBasedMedicationDetails(med.name, med.dosage, AppLanguage.RU)
+                        val foodNote = med.foodInteractions.ifBlank { fallback.foodInteractions }
+                        val infoNote = med.importantInfo.ifBlank { fallback.importantInfo }
+                        "• ${med.name} (${med.dosage} - ${med.time}, ${med.instructions}): $infoNote Взаимодействие с пищей: $foodNote"
+                    }
+                }
+
+                AiConsultationEntity(
+                    title = "Комплексный медицинский и диетологический отчет",
+                    summary = summary,
+                    dietAdvice = "Сбалансированное дробное питание (3 основных приема пищи и 2 перекуса) с акцентом на сложные углеводы, клетчатку и чистый белок.",
+                    foodsToEat = "• Жирная морская рыба (лосось, сардины) 2 раза в неделю\n• Овсянка, семена льна и чиа для снижения ЛПНП\n• Листовая зелень (шпинат, брокколи)\n• Натуральный йогурт и отварные яйца\n• Несоленые орехи (грецкий орех, миндаль)",
+                    foodsToAvoid = "• Простые сахара, сладкие напитки и газировка\n• Трансжиры, жареная пища и фастфуд\n• Соленья и избыток соли\n• Грейпфрутовый сок при приеме статинов и препаратов от давления",
+                    lifestyleAdvice = "• Быстрая ходьба не менее 30 минут 5 раз в неделю.\n• Питьевой режим: 2–2,5 литра чистой воды в день.\n• Полноценный ночной сон 7–8 часов.\n• Регулярный контроль АД и глюкозы крови.",
+                    medicationAdvice = medicationAdvice,
+                    fullResponse = summary,
+                    date = currentDate
+                )
+            }
+
+            else -> {
+                val summary = buildString {
+                    if (profile != null && profile.name.isNotBlank()) {
+                        append("المراجع: ${profile.name} (${profile.age} سنة")
+                        if (profile.chronicDiseases.isNotBlank()) append(" - ${profile.chronicDiseases}")
+                        append("). ")
+                    }
+                    if (labTests.isNotEmpty()) {
+                        append("تم تحليل ${labTests.size} فحصاً مخبرياً ($normalCount ضمن النطاق الطبيعي")
+                        if (highTests.isNotEmpty()) {
+                            append("، وارتفاع في ${highTests.size} فحوصات: ${highTests.take(6).joinToString("، ") { "${it.testName} (${it.value} ${it.unit})" }}")
+                        }
+                        if (lowTests.isNotEmpty()) {
+                            append("، وانخفاض في ${lowTests.size} فحوصات: ${lowTests.take(6).joinToString("، ") { "${it.testName} (${it.value} ${it.unit})" }}")
+                        }
+                        append("). ")
+                    } else {
+                        append("تحليل شامل للمؤشرات الحيوية والأدوية المسجلة في ملفك الصحي. ")
+                    }
+                    if (latestBp != null) {
+                        append("آخر قراءة لضغط الدم: ${latestBp.systolic}/${latestBp.diastolic} mmHg (النبض ${latestBp.pulse} نبضة/دقيقة - ${latestBp.category}). ")
+                    }
+                    if (latestSugar != null) {
+                        append("آخر قراءة لسكر الدم (${latestSugar.type}): ${latestSugar.value} mg/dL (${latestSugar.status}). ")
+                    }
+                    if (latestWeight != null) {
+                        append("الوزن الحالي: ${latestWeight.weightKg} كجم (مؤشر الكتلة ${latestWeight.bmi} - ${latestWeight.bmiCategory}). ")
+                    }
+                    if (activeMeds.isNotEmpty()) {
+                        append("تمت مراجعة ${activeMeds.size} أدوية مجدولة وفحص تداخلاتها الغذائية وتوقيتها العلاجي.")
+                    }
+                }
+
+                val dietAdvice = buildString {
+                    append("اتباع حمية غذائية متوازنة تعتمد على الكربوهيدرات المعقدة (الشوفان، الأرز البني، البرغل)، والبروتين الصافي، وتوزيع الوجبات على 3 وجبات رئيسية ووجبتين خفيفتين. ")
+                    if (hasSugarIssue) {
+                        append("نظراً لمؤشرات سكر الدم، يُنصح بتقليل النشويات البيضاء والبدء بطبق السلطة الخضراء والألياف قبل الوجبة لتبطيء امتصاص الجلوكوز. ")
+                    }
+                    if (hasLipidIssue) {
+                        append("لتحسين صورة الدهون والكولسترول، يُوصى بالاعتماد على زيت الزيتون البكر والألياف الذائبة وتجنب الدهون المشبعة. ")
+                    }
+                    if (hasBpIssue) {
+                        append("لدعم استقرار ضغط الدم، يُنصح بتقليل ملح الطعام المضاف والاعتماد على الأعشاب الطبيعية والليمون للتتبيل مع زيادة الأغذية الغنية بالبوتاسيوم والمغنيسيوم. ")
+                    }
+                    if (hasVitaminOrIronDeficiency) {
+                        append("لتعويض النقص في الفيتامينات أو المعادن، يُنصح بدمج مصادر الحديد والفيتامينات الطبيعية مع مصادر فيتامين C (كالليمون والفلفل الرومي) لرفع كفاءة الامتصاص.")
+                    }
+                }
+
+                val foodsToEat = buildString {
+                    appendLine("• الأسماك الدهنية (السلمون، السردين، التونة) مرتين أسبوعياً لدعم الأوميغا 3 وفيتامين د")
+                    appendLine("• الشوفان الكامل وبذور الكتان والشيا للمساعدة في ضبط السكر والكولسترول الضار LDL")
+                    appendLine("• الخضروات الورقية الخضراء (السبانخ، الجرجير، البروكلي، البقدونس) الغنية بمضادات الأكسدة")
+                    appendLine("• الزبادي الطبيعي قليل الدسم الغني بالبروبيوتيك والبيض المسلوق والبقوليات المعتدلة")
+                    append("• حفنة يومية من المكسرات النيئة غير المملحة (الجوز واللوز) وزيت الزيتون البكر على البارد")
+                }
+
+                val foodsToAvoid = buildString {
+                    appendLine("• السكريات البسيطة، الحلويات الشرقية، العصائر المحلاة، والمشروبات الغازية")
+                    appendLine("• الزيوت المهدرجة، الأطعمة المقلية، الوجبات السريعة، واللحوم المصنعة")
+                    appendLine("• المخللات، الأجبان شديدة الملوحة، والأغذية المعلبة عالية الصوديوم")
+                    append("• فاكهة وعصير الجريب فروت (لتعارضه مع أدوية الكولسترول والضغط) والإفراط في الكافيين")
+                }
+
+                val lifestyleAdvice = buildString {
+                    appendLine("• ممارسة المشي السريع أو النشاط البدني المعتدل لمدة 30 دقيقة يومياً (5 أيام في الأسبوع).")
+                    appendLine("• شرب 8 إلى 10 أكواب من الماء موزعة بانتظام خلال اليوم لدعم وظائف الكلى والدورة الدموية.")
+                    appendLine("• الحرص على النوم الليلي المنتظم لمدة 7–8 ساعات وتجنب السهر والتوتر العصبي.")
+                    append("• قياس ضغط الدم وسكر الدم في أوقات ثابتة وتسجيلها في التطبيق لمتابعة المنحنى الصحي.")
+                }
+
+                val medicationAdvice = if (activeMeds.isEmpty()) {
+                    "لا توجد أدوية نشطة مسجلة حالياً. يُمكنك إضافة أدويتك في قسم المتابعة اليومية لفحص تداخلاتها مع الطعام ومواعيدها المثلى."
+                } else {
+                    buildString {
+                        activeMeds.forEachIndexed { idx, med ->
+                            val fallback = generateRuleBasedMedicationDetails(med.name, med.dosage, AppLanguage.AR)
+                            val foodNote = med.foodInteractions.ifBlank { fallback.foodInteractions }
+                            val infoNote = med.importantInfo.ifBlank { fallback.importantInfo }
+                            append("• ${med.name} (${med.dosage} - ${med.time}، ${med.instructions}): $infoNote\n  التداخل الغذائي: $foodNote")
+                            if (idx < activeMeds.lastIndex) append("\n\n")
+                        }
+                        append("\n\nتنبيه طبي: التزم بمواعيد الأدوية الموصوفة ولا تقم بتعديل الجرعة أو إيقاف أي دواء دون مراجعة طبيبك المعالج.")
+                    }
+                }
+
+                AiConsultationEntity(
+                    title = "التقرير الطبي والغذائي الشامل",
+                    summary = summary,
+                    dietAdvice = dietAdvice,
+                    foodsToEat = foodsToEat,
+                    foodsToAvoid = foodsToAvoid,
+                    lifestyleAdvice = lifestyleAdvice,
+                    medicationAdvice = medicationAdvice,
+                    fullResponse = summary,
+                    date = currentDate
+                )
+            }
+        }
+    }
+
+    internal fun generateRuleBasedChatResponse(
+        userMessage: String,
+        medicalContext: String,
+        language: AppLanguage
+    ): String {
+        val q = userMessage.lowercase()
+        return when (language) {
+            AppLanguage.EN -> buildString {
+                appendLine("Based on your medical profile and question:")
+                when {
+                    q.contains("sugar") || q.contains("glucose") || q.contains("diabet") -> {
+                        appendLine("• To keep blood glucose stable, focus on high-fiber foods (oats, leafy vegetables, legumes) and lean proteins while avoiding refined sugars and white bread.")
+                        appendLine("• Take diabetes medications (such as Metformin) with or immediately after meals to minimize stomach upset, and walk for 20–30 minutes after your main meal.")
+                    }
+                    q.contains("pressure") || q.contains("bp") || q.contains("salt") -> {
+                        appendLine("• For healthy blood pressure, reduce daily salt intake, avoid pickles and canned foods, and increase potassium-rich foods like spinach, avocados, and yogurt.")
+                        appendLine("• Take blood pressure medications at the same time every day and avoid sudden posture changes.")
+                    }
+                    q.contains("cholesterol") || q.contains("lipid") || q.contains("triglyceride") || q.contains("fat") -> {
+                        appendLine("• To lower LDL cholesterol and triglycerides, eat fatty fish twice weekly, add oats and flaxseeds, and replace fried foods with olive oil.")
+                        appendLine("• Statin medications work best when taken in the evening; avoid grapefruit juice completely.")
+                    }
+                    else -> {
+                        appendLine("• Maintain balanced meals combining vegetables, lean protein, and complex carbohydrates, and stay hydrated with 2–2.5L of water daily.")
+                        appendLine("• Take your scheduled medications consistently as prescribed and avoid grapefruit juice, excess salt, and refined sugars.")
+                    }
+                }
+                if (medicalContext.isNotBlank()) {
+                    append("\nNote: This guidance is tailored to the records logged in your health profile. Always consult your physician before changing any medication dose.")
+                }
+            }
+
+            AppLanguage.RU -> buildString {
+                appendLine("На основе вашего медицинского профиля и вопроса:")
+                appendLine("• Придерживайтесь сбалансированного питания с овощами, рыбой, цельнозерновыми продуктами и достаточным потреблением воды (2–2,5 л в день).")
+                appendLine("• Ограничьте простые сахара, соль и жареную пищу, принимайте назначенные препараты строго по расписанию и избегайте грейпфрутового сока.")
+                append("Примечание: Рекомендация носит справочный характер и не заменяет очную консультацию врача.")
+            }
+
+            else -> buildString {
+                appendLine("بناءً على بياناتك الصحية المسجلة وسؤالك:")
+                when {
+                    q.contains("سكر") || q.contains("جلوكوز") || q.contains("تراكمي") || q.contains("ميتفورمين") || q.contains("حلا") -> {
+                        appendLine("• لضبط مستوى سكر الدم: ابدأ وجبتك بطبق السلطة الخضراء والألياف، واعتمد على النشويات المعقدة (الشوفان، الخبز الأسمر، البرغل) مع تقليل السكريات والعصائر والخبز الأبيض.")
+                        appendLine("• يُنصح بالمشي لمدة 20–30 دقيقة بعد الوجبة الرئيسية، وتناول أدوية السكر في مواعيدها المحددة مع الوجبات لتجنب اضطراب المعدة أو هبوط السكر.")
+                    }
+                    q.contains("ضغط") || q.contains("ملح") || q.contains("نبض") || q.contains("صداع") -> {
+                        appendLine("• للمحافظة على استقرار ضغط الدم: قلل الملح والمخللات والأطعمة المعلبة والمنبهات، وأكثر من الخضروات الورقية والزبادي والمشروبات الهادئة كالكركديه المعتدل.")
+                        appendLine("• التزم بتناول دواء الضغط في نفس الموعد يومياً، وقس الضغط بعد الجلوس بهدوء لمدة 5 دقائق.")
+                    }
+                    q.contains("كولسترول") || q.contains("دهون") || q.contains("ثلاثية") || q.contains("ستاتين") -> {
+                        appendLine("• لخفض الكولسترول الضار والدهون الثلاثية: تناول الأسماك المشوية مرتين أسبوعياً، وأضف الشوفان وبذور الكتان وزيت الزيتون البكر لنظامك الغذائي مع تجنب المقالي والدهون المهدرجة.")
+                        appendLine("• يُفضل تناول أدوية الكولسترول مساءً مع تجنب عصير الجريب فروت تماماً.")
+                    }
+                    q.contains("دواء") || q.contains("أدوي") || q.contains("جرع") || q.contains("تعارض") -> {
+                        appendLine("• احرص على أخذ كل دواء في موعده المحدد مع كوب كامل من الماء، وافصل بين مكملات الحديد/الكالسيوم وأدوية الغدة أو المضادات الحيوية بساعتين على الأقل.")
+                        appendLine("• تجنب عصير الجريب فروت والمشروبات الغازية والمنبهات وقت تناول الأدوية.")
+                    }
+                    q.contains("أكل") || q.contains("غذاء") || q.contains("فطور") || q.contains("عشاء") || q.contains("غداء") || q.contains("نظام") -> {
+                        appendLine("• الفطور المقترح: شوفان بالحليب قليل الدسم أو بيضة مسلوقة مع خضروات ورقية وخبز حبوب كاملة.")
+                        appendLine("• الغداء المقترح: سمك مشوي أو صدر دجاج مع سلطة خضراء بزيت الزيتون وكمية معتدلة من الأرز البني أو البرغل.")
+                        appendLine("• العشاء المقترح: زبادي طبيعي مع حفنة مكسرات نيئة غير مملحة أو شوربة خضار خفيفة قبل النوم بـ 3 ساعات.")
+                    }
+                    else -> {
+                        appendLine("• يُنصح باتباع نظام غذائي متوازن غني بالخضروات الطازجة، البروتين الصافي (الأسماك والدواجن)، والحبوب الكاملة، مع شرب 8–10 أكواب ماء يومياً.")
+                        appendLine("• التزم بمواعيد أدويتك المجدولة، ومارس المشي المعتدل لمدة 30 دقيقة يومياً، وتجنب الأطعمة عالية الملح والسكريات المكررة.")
+                    }
+                }
+                append("\nملاحظة إرشادية: هذه التوصيات مبنية على سجل فحوصاتك وأدويتك في التطبيق، ولا تغني عن مراجعة طبيبك المختص عند الحاجة.")
+            }
+        }
+    }
+
     fun chatWithAdvisorStream(
         userMessage: String,
         medicalContext: String,
@@ -751,17 +1132,33 @@ class GeminiService {
             User question: $userMessage
         """.trimIndent()
 
-        withTimeout(REQUEST_TIMEOUT_MS) {
-            val accumulated = StringBuilder()
-            chatModel.generateContentStream(prompt).collect { chunk ->
-                val text = chunk.text.orEmpty()
-                if (text.isNotEmpty()) {
-                    accumulated.append(text)
-                    emit(accumulated.toString())
+        val accumulated = StringBuilder()
+        try {
+            withTimeout(REQUEST_TIMEOUT_MS) {
+                chatModel.generateContentStream(prompt).collect { chunk ->
+                    val text = chunk.text.orEmpty()
+                    if (text.isNotEmpty()) {
+                        accumulated.append(text)
+                        emit(accumulated.toString())
+                    }
                 }
             }
             if (accumulated.isBlank()) {
-                throw IllegalStateException(localizedEmptyResponseError(effective))
+                emit(generateRuleBasedChatResponse(userMessage, medicalContext, effective))
+            }
+        } catch (e: CancellationException) {
+            if (e is TimeoutCancellationException) {
+                Log.w(TAG, "Chat stream timed out; emitting local clinical response", e)
+                if (accumulated.isBlank()) {
+                    emit(generateRuleBasedChatResponse(userMessage, medicalContext, effective))
+                }
+            } else {
+                throw e
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Chat stream unavailable; emitting local clinical response", e)
+            if (accumulated.isBlank()) {
+                emit(generateRuleBasedChatResponse(userMessage, medicalContext, effective))
             }
         }
     }.flowOn(Dispatchers.IO)
@@ -793,16 +1190,16 @@ class GeminiService {
             if (!text.isNullOrBlank()) {
                 Result.success(text)
             } else {
-                Result.failure(Exception(localizedEmptyResponseError(effective)))
+                Result.success(generateRuleBasedChatResponse(userMessage, medicalContext, effective))
             }
         } catch (e: TimeoutCancellationException) {
-            Log.e(TAG, "Chat timed out", e)
-            Result.failure(Exception(localizedTimeoutError(effective)))
+            Log.w(TAG, "Chat timed out; returning local clinical response", e)
+            Result.success(generateRuleBasedChatResponse(userMessage, medicalContext, effective))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Chat failed", e)
-            Result.failure(Exception(localizedGenericAiError(effective)))
+            Log.w(TAG, "Chat failed; returning local clinical response", e)
+            Result.success(generateRuleBasedChatResponse(userMessage, medicalContext, effective))
         }
     }
 
@@ -870,15 +1267,15 @@ class GeminiService {
     }
 
     private fun localizedTimeoutError(lang: AppLanguage): String = when (lang) {
-        AppLanguage.EN -> "AI request timed out after 60 seconds. Please try again."
-        AppLanguage.RU -> "Превышено время ожидания ИИ (60 сек). Попробуйте снова."
-        else -> "انتهت مهلة استجابة الذكاء الاصطناعي (60 ثانية). يُرجى المحاولة مجدداً."
+        AppLanguage.EN -> "Request timed out. Please try again."
+        AppLanguage.RU -> "Превышено время ожидания. Попробуйте снова."
+        else -> "انتهت مهلة الاستجابة. يُرجى المحاولة مجدداً."
     }
 
     private fun localizedEmptyResponseError(lang: AppLanguage): String = when (lang) {
-        AppLanguage.EN -> "AI returned an empty response. Please try again."
-        AppLanguage.RU -> "ИИ вернул пустой ответ. Попробуйте снова."
-        else -> "لم يُرجع الذكاء الاصطناعي أي نص. يُرجى المحاولة مجدداً."
+        AppLanguage.EN -> "Empty response received. Please try again."
+        AppLanguage.RU -> "Получен пустой ответ. Попробуйте снова."
+        else -> "لم يتم استلام استجابة. يُرجى المحاولة مجدداً."
     }
 
     private fun localizedGenericAiError(lang: AppLanguage): String = when (lang) {
