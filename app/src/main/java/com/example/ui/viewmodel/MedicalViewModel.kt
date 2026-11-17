@@ -577,9 +577,9 @@ class MedicalViewModel(application: Application) : AndroidViewModel(application)
             } catch (e: TimeoutCancellationException) {
                 Log.e("MedicalViewModel", "Chat streaming timed out", e)
                 val timeoutMsg = when (_appLanguage.value.resolveEffectiveLanguage()) {
-                    AppLanguage.EN -> "AI advisor timed out (60s). Please try again."
-                    AppLanguage.RU -> "Время ожидания ответа ИИ-консультанта истекло (60 сек). Повторите попытку."
-                    else -> "انتهت مهلة استجابة المستشار الذكي (60 ثانية). يُرجى المحاولة مجدداً."
+                    AppLanguage.EN -> "Response timed out. Please try again."
+                    AppLanguage.RU -> "Время ожидания ответа истекло. Повторите попытку."
+                    else -> "انتهت مهلة الاستجابة. يُرجى المحاولة مجدداً."
                 }
                 _chatMessages.value = _chatMessages.value + ChatMessage(
                     isUser = false,

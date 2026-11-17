@@ -43,7 +43,8 @@ class GeminiService {
     companion object {
         private const val TAG = "GeminiService"
         private const val DEFAULT_MODEL = "gemini-3.8-flash"
-        private const val REQUEST_TIMEOUT_MS = 30_000L
+        private const val REQUEST_TIMEOUT_MS = 45_000L
+        private const val MULTIMODAL_TIMEOUT_MS = 90_000L
         private const val MAX_INLINE_MEDIA_BYTES = 19 * 1024 * 1024 // Keep under 20MB limit
     }
 
@@ -326,7 +327,7 @@ class GeminiService {
             }
         } catch (e: TimeoutCancellationException) {
             Log.e(TAG, "Lab report extraction timed out", e)
-            Result.failure(Exception("انتهت مهلة تحليل التقرير المخبري (60 ثانية). يُرجى المحاولة مجدداً"))
+            Result.failure(Exception("انتهت مهلة تحليل التقرير المخبري (90 ثانية). يُرجى المحاولة مجدداً أو تقليل حجم الملف"))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -1245,7 +1246,7 @@ class GeminiService {
             }
         }
 
-        val response = withTimeout(REQUEST_TIMEOUT_MS) {
+        val response = withTimeout(MULTIMODAL_TIMEOUT_MS) {
             jsonExtractionModel.generateContent(multimodalContent)
         }
         return response.text ?: throw IllegalStateException("Model returned empty response.")
